@@ -181,3 +181,31 @@ vssadmin list shadowstorage
 
 **Q：怎么确认某个软件被识别成什么？**
 用命令行：`python scanner.py C: --engine es --top 50`，会按「按软件」汇总打印。
+
+---
+
+## 自动发布
+
+推送 `v*` 形式的 tag 即可自动构建并发布 Release：
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+GitHub Actions 会在 `windows-latest` 上：
+
+1. 安装 Python 3.11 + PyInstaller
+2. 用仓库内的 `DiskCleaner.spec` 打包成单文件 exe
+3. 校验产物体积，生成 `SHA256SUMS.txt`
+4. 重命名为 `DiskCleaner-<tag>.exe` 并上传 artifact
+5. 创建 GitHub Release，附上 exe 和校验和
+
+也可以在 Actions 页面手动 `workflow_dispatch` 触发——只构建并上传 artifact，不发布 Release。
+
+---
+
+## 许可
+
+[MIT](LICENSE)
+
