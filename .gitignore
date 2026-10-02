@@ -1,0 +1,34 @@
+# ── Python ──────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── PyInstaller 打包产物 ─────────────────────
+build/
+dist/
+# 注意：不忽略 *.spec —— CI 用仓库里的 DiskCleaner.spec，本地生成的不会提交
+
+# ── 开发/验证用的临时文件 ────────────────────
+verify.ps1
+_shot*.ps1
+_shot*.png
+_verify.png
+_light*.png
+_themes_check.py
+_test_gui.py
+
+# ── 编辑器/系统 ─────────────────────────────
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+*.log
+
+# ── 测试产物 ────────────────────────────────
+es_test.csv
+dc_*.csv
+dc_*.md

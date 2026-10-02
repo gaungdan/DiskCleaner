@@ -1,0 +1,20 @@
+# 统一换行符，避免 Windows/Linux 之间来回转换产生噪音 diff
+* text=auto
+
+# 源码与配置：仓库内一律 LF
+*.py   text eol=lf
+*.pyw  text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+
+# Windows 批处理：保持 CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# 二进制文件：不要做任何换行转换
+*.exe  binary
+*.png  binary
+*.ico  binary
+*.zip  binary
