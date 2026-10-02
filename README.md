@@ -189,8 +189,8 @@ vssadmin list shadowstorage
 推送 `v*` 形式的 tag 即可自动构建并发布 Release：
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag -a v1.1.1 -m "DiskCleaner v1.1.1"
+git push origin v1.1.1
 ```
 
 GitHub Actions 会在 `windows-latest` 上：
@@ -202,6 +202,11 @@ GitHub Actions 会在 `windows-latest` 上：
 5. 创建 GitHub Release，附上 exe 和校验和
 
 也可以在 Actions 页面手动 `workflow_dispatch` 触发——只构建并上传 artifact，不发布 Release。
+
+> **注意**：仓库 remote 用的是 **SSH**（`git@github.com:gaungdan/DiskCleaner.git`）。
+> 如果用 HTTPS + Personal Access Token 推送，token 必须带 `workflow` 权限
+> （经典 token 勾 `workflow`；细粒度 token 把 `Workflows` 设为 Read and write），
+> 否则改到 `.github/workflows/` 下的文件会被 GitHub 拒绝。
 
 ---
 
