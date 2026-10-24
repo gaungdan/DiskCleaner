@@ -49,7 +49,7 @@
 - **大小** — 文件体积
 - **所属软件** — 例如 `Adobe Premiere / After Effects`、`NVIDIA 显卡驱动`、`Qoder (通义灵码/QoderCN)`
 - **类型** — 安装包 / 更新包 / 旧版本残留 / 着色器缓存 / 媒体缓存 / 应用缓存 / 浏览器缓存 / 日志 / 临时文件 …
-- **可信度** — 规则匹配的可靠程度（0–100%）
+- **可信度** — 规则的「专一度」自动计算（0–100%）：路径里的通配符越多、越泛化，分数越低；带环境变量锚点 / 文件名正则 / 体积门槛的越具体越高。不再手填。
 - **文件** — 文件名
 
 选中一行，底部会显示**完整路径**和**清理建议**。双击一行可在资源管理器中定位。
@@ -96,13 +96,14 @@
   "software": "NVIDIA App / GeForce", // 界面上显示的「所属软件」
   "category": "installer",            // 类型（对应 categories 里的中文标签）
   "risk": "medium",                   // safe | medium | danger
-  "confidence": 90,                   // 可信度 0-100
   "path": ["%PROGRAMDATA%\\NVIDIA Corporation\\Downloader\\*"],
   "min_size": 1048576,                // 小于这个体积就忽略（避免噪音）
   "advice": "删了下次更新会重新下载 600+ MB。",
   "reclaimable": true                 // false = 不建议清理
 }
 ```
+
+**注意**：**不需要**写 `confidence` 字段 —— 程序会根据 `path` 里的通配符数量、环境变量锚点、`name_regex`、`min_size` 自动计算可信度（见 `scanner.py` 的 `_compute_confidence`）。旧规则文件里手填的 `confidence` 字段已全部移除。
 
 **路径写法**：支持 `%LOCALAPPDATA%` `%APPDATA%` `%USERPROFILE%` `%PROGRAMDATA%` `%PROGRAMFILES%` `%PROGRAMFILES(X86)%` `%SYSTEMDRIVE%` 占位符。
 

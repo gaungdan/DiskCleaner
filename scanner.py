@@ -166,7 +166,6 @@ class Rule:
         self.software = raw.get("software", "未知")
         self.category = raw.get("category", "app_cache")
         self.risk = raw.get("risk", "medium")
-        self.confidence = int(raw.get("confidence", 50))
         self.raw_paths = raw.get("path", [])
         self.min_size = int(raw.get("min_size", 0))
         self.max_size = int(raw.get("max_size", 0)) or None
@@ -176,6 +175,9 @@ class Rule:
         pat = raw.get("name_regex")
         self.name_re = re.compile(pat, re.IGNORECASE) if pat else None
 
+        # 置信度不再手填：由规则模式的「专一度」自动推导（见 _compute_confidence）
+        self.confidence = self._compute_confidence()
+
         self.patterns = []
         self.prefixes = []
         for p in self.raw_paths:
@@ -183,6 +185,45 @@ class Rule:
             self.patterns.append(rx)
             if prefix:
                 self.prefixes.append(prefix)
+
+    def _compute_confidence(self) -> int:
+        """根据模式的「专一度」推导置信度（0-100），替代手填数字。
+
+        扣分（越宽松越不可靠）：
+          - 路径中间的独立通配段（%APPDATA%\\*\\Cache 里的 *）＝ 会命中
+            多个软件的同类目录 → -15
+          - ** 跨任意层级 ＝ 最宽松 → -18
+          - 段内的部分通配（vmware-download-*、*.zip）＝ 与其他名字重叠 → -9
+          - 结尾的 \\* （遍历某目录下全部内容）＝ 常规写法 → -8
+        加分（越具体越可靠）：
+          - 环境变量占位符（%LOCALAPPDATA% 等）＝ 锚定了真实根目录 → 每个 +1
+          - name_regex ＝ 文件名约束使匹配更精准 → +7
+          - min_size ≥ 1 MB ＝ 体积门槛过滤了杂音 → +5
+        """
+        scores = []
+        for p in self.raw_paths:
+            s = 100.0
+            segs = [x for x in re.split(r"[\\/]", p) if x]
+            for i, seg in enumerate(segs):
+                if "*" not in seg and "?" not in seg:
+                    continue
+                last = (i == len(segs) - 1)
+                if seg == "**":
+                    s -= 8 if last else 18
+                elif seg == "*":
+                    s -= 8 if last else 15
+                else:
+                    s -= 7 if last else 9
+            s += 1 * len(re.findall(r"%[A-Z0-9_()]+%", p.upper()))
+            scores.append(s)
+        if not scores:
+            return 30
+        score = (sum(scores) / len(scores))
+        if self.name_re:
+            score += 7
+        if self.min_size >= (1 << 20):
+            score += 5
+        return max(30, min(99, int(round(score))))
 
     def match(self, path: str, size: int) -> bool:
         if size < self.min_size:
