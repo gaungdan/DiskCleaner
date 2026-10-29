@@ -23,6 +23,7 @@ from pathlib import Path
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinter import font as tkfont
 
 # 兼容 PyInstaller 打包后的路径
 if getattr(sys, "frozen", False):
@@ -37,7 +38,7 @@ sys.path.insert(0, str(APP_DIR))
 import scanner as SC  # noqa: E402
 
 APP_TITLE = "DiskCleaner · 磁盘垃圾清理"
-VERSION = "1.1"
+VERSION = "1.2"
 
 # ── 配色主题 ────────────────────────────────────────────────
 LIGHT_THEME = {
@@ -161,8 +162,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_TITLE}  v{VERSION}")
-        self.geometry("1340x820")
         self.minsize(1040, 640)
+        self.geometry("1040x640")
 
         # 主题
         self.themes = {"light": LIGHT_THEME, "dark": DARK_THEME}
@@ -181,6 +182,7 @@ class App(tk.Tk):
         self.risk_filter = tk.StringVar(value="reclaim")   # 默认可清理项
         self.only_reclaim = tk.BooleanVar(value=False)
         self.keyword = tk.StringVar(value="")
+        self._search_job = None
         self.theme_var = tk.StringVar(value=self.pal["name"])
         self.scan_q: queue.Queue = queue.Queue()
         self.cancel_evt = threading.Event()
@@ -249,11 +251,12 @@ class App(tk.Tk):
         self.option_add("*TCombobox*Listbox.selectBackground", p["ACCENT"])
         self.option_add("*TCombobox*Listbox.selectForeground", p["ACCENT_FG"])
         st.configure("TNotebook", background=p["BG"], borderwidth=0, tabmargins=(2, 4, 2, 0))
-        st.configure("TNotebook.Tab", padding=(12, 5), background=p["HEAD_BG"],
+        st.configure("TNotebook.Tab", padding=(8, 5), background=p["HEAD_BG"],
                      foreground=p["DIM"], borderwidth=0)
         st.map("TNotebook.Tab",
                background=[("selected", p["PANEL"])],
-               foreground=[("selected", p["ACCENT"])])
+               foreground=[("selected", p["ACCENT"])],
+               padding=[("selected", (24, 5)), ("!selected", (8, 5))])
         st.configure("TProgressbar", background=p["ACCENT"], troughcolor=p["HEAD_BG"],
                      bordercolor=p["BORDER"], lightcolor=p["ACCENT"],
                      darkcolor=p["ACCENT"])
@@ -330,7 +333,8 @@ class App(tk.Tk):
         ttk.Label(fl, text="  搜索：", style="Dim.TLabel").pack(side="left")
         ent = ttk.Entry(fl, textvariable=self.keyword, width=22)
         ent.pack(side="left")
-        ent.bind("<KeyRelease>", lambda e: self.render_tree())
+        ent.bind("<KeyRelease>", self._on_search_key)
+        ent.bind("<Escape>", self._clear_search)
         ttk.Label(fl, text="分组：", style="Dim.TLabel").pack(side="left", padx=(12, 0))
         self.group_cb = ttk.Combobox(fl, state="readonly", width=12,
                                      values=["平铺列表", "按软件分组", "按类型分组"])
@@ -342,23 +346,25 @@ class App(tk.Tk):
         gridwrap.pack(fill="both", expand=True)
 
         cols = ("chk", "size", "software", "category", "confidence", "name")
-        self.tree = ttk.Treeview(gridwrap, columns=cols, show="tree headings",
+        self.tree = ttk.Treeview(gridwrap, columns=cols, show="headings",
                                  selectmode="extended")
-        self.tree.heading("#0", text="项目")
-        self.tree.column("#0", width=150, minwidth=100, stretch=False)
-        self.tree.heading("chk", text="选")
-        self.tree.column("chk", width=36, minwidth=36, anchor="center", stretch=False)
-        self.tree.heading("size", text="大小")
+        self.tree.heading("chk", text="选", anchor="center")
+        self.tree.column("chk", width=40, minwidth=36, anchor="center", stretch=False)
+        self.tree.heading("size", text="大小", anchor="e")
         self.tree.column("size", width=88, minwidth=80, anchor="e", stretch=False)
-        self.tree.heading("software", text="所属软件")
-        self.tree.column("software", width=196, minwidth=120, stretch=False)
-        self.tree.heading("category", text="类型")
-        self.tree.column("category", width=96, minwidth=76, stretch=False)
-        self.tree.heading("confidence", text="可信度")
-        self.tree.column("confidence", width=60, minwidth=52, anchor="center",
+        self.tree.heading("software", text="所属软件", anchor="w")
+        self.tree.column("software", width=196, minwidth=150, stretch=False)
+        self.tree.heading("category", text="类型", anchor="w")
+        self.tree.column("category", width=96, minwidth=92, stretch=False)
+        self.tree.heading("confidence", text="可信度", anchor="center")
+        self.tree.column("confidence", width=64, minwidth=56, anchor="center",
                          stretch=False)
-        self.tree.heading("name", text="文件")
-        self.tree.column("name", width=200, minwidth=110, stretch=True)
+        self.tree.heading("name", text="文件", anchor="w")
+        self.tree.column("name", width=240, minwidth=200, stretch=True)
+
+        self._row_font = tkfont.nametofont("TkDefaultFont")
+        self._head_font = tkfont.Font(family="Microsoft YaHei UI", size=9,
+                                      weight="bold")
 
         vs = ttk.Scrollbar(gridwrap, orient="vertical", command=self.tree.yview)
         hs = ttk.Scrollbar(gridwrap, orient="horizontal", command=self.tree.xview)
@@ -374,6 +380,8 @@ class App(tk.Tk):
         self.tree.tag_configure("danger", foreground=self.pal["DANGER"])
         self.tree.tag_configure("group", foreground=self.pal["ACCENT"],
                                 font=("Microsoft YaHei UI", 10, "bold"))
+        self.tree.tag_configure("stripe", background=self.pal["STRIPE"])
+        self.tree.tag_configure("placeholder", foreground=self.pal["DIM"])
         self.tree.bind("<Button-1>", self._on_click)
         self.tree.bind("<Button-3>", self._on_right_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
@@ -394,8 +402,8 @@ class App(tk.Tk):
         self.nb.pack(fill="both", expand=True)
         self.sw_tree = self._make_sum_tree(self.nb, "按软件")
         self.cat_tree = self._make_sum_tree(self.nb, "按类型")
-        self.nb.add(self.sw_tree.master, text="按软件")
-        self.nb.add(self.cat_tree.master, text="按类型")
+        self.nb.add(self.sw_tree.master, text="软件")
+        self.nb.add(self.cat_tree.master, text="类型")
 
         ttk.Label(right, text="↑ 双击可只看该软件", style="Panel.TLabel",
                   foreground=self.pal["DIM"]).pack(anchor="w", pady=(6, 0))
@@ -464,6 +472,8 @@ class App(tk.Tk):
         self.tree.tag_configure("medium", foreground=p["MEDIUM"])
         self.tree.tag_configure("danger", foreground=p["DANGER"])
         self.tree.tag_configure("group", foreground=p["ACCENT"])
+        self.tree.tag_configure("stripe", background=p["STRIPE"])
+        self.tree.tag_configure("placeholder", foreground=p["DIM"])
         for t in (self.sw_tree, self.cat_tree):
             t.tag_configure("safe", foreground=p["SAFE"])
             t.tag_configure("medium", foreground=p["MEDIUM"])
@@ -592,7 +602,7 @@ class App(tk.Tk):
     # ── 渲染 ────────────────────────────────────────────
     def _visible_hits(self) -> list[SC.Hit]:
         out = []
-        kw = self.keyword.get().strip().lower()
+        terms = self.keyword.get().strip().lower().split()
         rf = self.risk_filter.get()
         only = self.only_reclaim.get()
         for h in self.matches:
@@ -605,20 +615,50 @@ class App(tk.Tk):
                 continue
             if only and not h.reclaimable:
                 continue
-            if kw and kw not in h.path.lower() and kw not in h.software.lower():
-                continue
+            if terms:
+                hay = (f"{h.path}\n{h.software}\n{h.category}\n"
+                       f"{self.ruleset.category_label(h.category)}").lower()
+                if not all(t in hay for t in terms):
+                    continue
             out.append(h)
         return out
+
+    def _on_search_key(self, _e=None):
+        """输入防抖：停止敲键 180ms 后再过滤，避免大列表卡顿。"""
+        if self._search_job:
+            self.after_cancel(self._search_job)
+        self._search_job = self.after(180, self._apply_search)
+
+    def _apply_search(self):
+        self._search_job = None
+        self.render_tree()
+
+    def _clear_search(self, _e=None):
+        if self.keyword.get():
+            self.keyword.set("")
+            self.render_tree()
+        return "break"
 
     def render_tree(self):
         self.tree.delete(*self.tree.get_children())
         self.iid_to_hit.clear()
+        self._autosize_columns()
         hits = self._visible_hits()
         if not hits:
+            if self.scanning:
+                msg = "正在扫描…"
+            elif self.result is None:
+                msg = "尚未扫描 · 选择磁盘后点击「开始扫描」"
+            else:
+                msg = "当前筛选条件下没有匹配项"
+            self.tree.insert("", "end", text="",
+                             values=("", "", "", "", "", msg),
+                             tags=("placeholder",))
+            self._update_selection_label()
             return
         if self.group_mode == "flat":
-            for h in hits:
-                self._insert_hit("", h)
+            for i, h in enumerate(hits):
+                self._insert_hit("", h, stripe=(i % 2 == 1))
         else:
             key = (lambda h: h.software) if self.group_mode == "software" \
                 else (lambda h: self.ruleset.category_label(h.category))
@@ -629,26 +669,51 @@ class App(tk.Tk):
                                        key=lambda kv: -sum(i.size for i in kv[1])):
                 total = sum(i.size for i in items)
                 reclaim = sum(i.size for i in items if i.reclaimable)
-                label = (f"{gname}   —   {len(items)} 项 · {human(total)}"
-                         f"（可清 {human(reclaim)}）")
-                gid = self.tree.insert("", "end", text=label, values=("", "", "", "", "", ""),
+                summary = f"{len(items)} 项 · 可清 {human(reclaim)}"
+                if self.group_mode == "software":
+                    vals = ("", human(total), gname, "", "", summary)
+                else:
+                    vals = ("", human(total), "", gname, "", summary)
+                gid = self.tree.insert("", "end", text="", values=vals,
                                        open=True, tags=("group",))
-                if gid not in self.checked:
-                    self.checked.add(gid)          # 组默认视为选中，便于整组勾选
-                for h in items:
-                    self._insert_hit(gid, h)
+                for i, h in enumerate(items):
+                    self._insert_hit(gid, h, stripe=(i % 2 == 1))
+                self.tree.set(gid, "chk", self._group_mark(gid))
         self._update_selection_label()
 
-    def _insert_hit(self, parent: str, h: SC.Hit):
+    def _autosize_columns(self):
+        """按内容收紧「所属软件 / 类型」列宽，并限制上下限。"""
+        soft_w = self._head_font.measure("所属软件")
+        cat_w = self._head_font.measure("类型")
+        for s in {h.software for h in self.matches}:
+            soft_w = max(soft_w, self._row_font.measure(s))
+        for c in {self.ruleset.category_label(h.category) for h in self.matches}:
+            cat_w = max(cat_w, self._row_font.measure(c))
+        self._set_col_width("software", min(max(soft_w + 20, 150), 280))
+        self._set_col_width("category", min(max(cat_w + 20, 92), 150))
+
+    def _set_col_width(self, col: str, width: int):
+        if int(self.tree.column(col, "width")) != width:
+            self.tree.column(col, width=width)
+
+    def _group_mark(self, gid: str) -> str:
+        kids = [self.iid_to_hit[k] for k in self.tree.get_children(gid)
+                if k in self.iid_to_hit and self.iid_to_hit[k].reclaimable]
+        if not kids:
+            return ""
+        return CHECK_ON if any(h.path in self.checked for h in kids) else CHECK_OFF
+
+    def _insert_hit(self, parent: str, h: SC.Hit, stripe: bool = False):
         mark = CHECK_ON if h.path in self.checked else (
             CHECK_OFF if h.reclaimable else CHECK_NA)
+        tags = (h.risk, "stripe") if stripe else (h.risk,)
         iid = self.tree.insert(
             parent, "end",
             text="",
             values=(mark, human(h.size), h.software,
                     self.ruleset.category_label(h.category),
                     f"{h.confidence}%", os.path.basename(h.path)),
-            tags=(h.risk,))
+            tags=tags)
         self.iid_to_hit[iid] = h
 
     def render_summary(self):
@@ -725,6 +790,9 @@ class App(tk.Tk):
         vals = list(self.tree.item(iid, "values"))
         vals[0] = mark
         self.tree.item(iid, values=vals)
+        parent = self.tree.parent(iid)
+        if parent:
+            self.tree.set(parent, "chk", self._group_mark(parent))
         self._update_selection_label()
 
     def toggle_group(self, gid: str):
@@ -742,6 +810,7 @@ class App(tk.Tk):
             vals = list(self.tree.item(k, "values"))
             vals[0] = CHECK_OFF if on else CHECK_ON
             self.tree.item(k, values=vals)
+        self.tree.set(gid, "chk", self._group_mark(gid))
         self._update_selection_label()
 
     def toggle_selected(self):
@@ -779,7 +848,10 @@ class App(tk.Tk):
         iid = sel[0]
         h = self.iid_to_hit.get(iid)
         if not h:
-            self.detail.configure(text="（分组行）双击汇总面板可只看该软件")
+            if self.tree.get_children(iid):
+                self.detail.configure(text="（分组行）双击右侧汇总面板可只看该软件")
+            else:
+                self.detail.configure(text=self.tree.set(iid, "name") or "尚无结果")
             return
         self.detail.configure(
             text=(f"【{h.software}】 {self.ruleset.category_label(h.category)}"
